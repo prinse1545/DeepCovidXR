@@ -42,6 +42,6 @@ def generateImages():
     pil_xray = Image.fromarray(xray.astype(numpy.uint8), mode = "L");
 
     # saving PIL img
-    pil_xray.save("test.png");
+    pil_xray.save("test2.png");
 
 generateImages();
