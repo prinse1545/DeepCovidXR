@@ -6,11 +6,11 @@
 
 # Importing models
 import pydicom
+from skimage.transform import resize
 from covid_models import DenseNet
 from tensorflow.keras.models import Sequential, Model
-from skimage.transform import resize
 from tensorflow.keras.layers import Dense
-from PIL import Image
+from PIL import Image 
 import numpy
 
 def buildModel():
@@ -35,15 +35,13 @@ def generateImages():
     # generating cropped images using image utils
     xray = pydicom.filereader.dcmread("/data/kaggle_data/train/005057b3f880/e34afce999c5/3019399c31f4.dcm").pixel_array;
 
-    # resizing dicom image
+    # resizing
     xray = resize(xray, (224, 224), anti_aliasing = True);
-    
-    # converting to PIL
-    pil_xray = Image.fromarray(xray.astype(numpy.uint8));
-    pil_xray.save("test.png");
-    print(xray)
-    print(type(xray))
 
-    
+    # making PIL img
+    pil_xray = Image.fromarray(xray.astype(numpy.uint8));
+
+    # saving PIL img
+    pil_xray.save("test.png");
 
 generateImages();
