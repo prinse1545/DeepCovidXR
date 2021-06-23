@@ -39,7 +39,7 @@ def generateImages():
     xray = resize(xray, (224, 224), anti_aliasing = True);
 
     # making PIL img
-    pil_xray = Image.fromarray(xray.astype(numpy.uint8));
+    pil_xray = Image.fromarray(xray.astype(numpy.uint8), mode = "L");
 
     # saving PIL img
     pil_xray.save("test.png");
