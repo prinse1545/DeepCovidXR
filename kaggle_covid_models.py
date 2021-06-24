@@ -13,8 +13,10 @@ from tensorflow.keras.models import Sequential, Model
 from tensorflow.keras.layers import Dense
 from PIL import Image 
 import matplotlib.pyplot as plt
+import shutil
 import numpy
 import cv2
+import os
 
 def buildModel():
 
@@ -33,30 +35,59 @@ def buildModel():
     # returning model
     return dense_kbuilt;
 
-def generateImages():
+def generateImages(read_dir, write_dir):
+    
+    def save_as_png(path_to_dcm, path_to_write, size = 512):
 
-    # generating cropped images using image utils
-    xray_dicom = pydicom.filereader.dcmread("/data/kaggle_data/train/6263c19334f8/1acf610fbe04/dfc7b258312f.dcm");
-    # applying volume of interest look up table colors to get opacity in
-    # accordance with dicom image format
-    xray = apply_voi_lut(xray_dicom.pixel_array, xray_dicom);
-    
-    # fixing inversion stuff if needed
-    if(xray_dicom.PhotometricInterpretation == "MONOCHROME1"):
-        xray = numpy.amax(xray) - xray;
-    
-    # normalizing
-    xray = xray - numpy.min(xray);
-    xray = xray / numpy.max(xray);
+        # generating cropped images using image utils
+        xray_dicom = pydicom.filereader.dcmread(path_to_dcm);
+        # applying volume of interest look up table colors to get opacity in
+        # accordance with dicom image format
+        xray = apply_voi_lut(xray_dicom.pixel_array, xray_dicom);
+        
+        # fixing inversion stuff if needed
+        if(xray_dicom.PhotometricInterpretation == "MONOCHROME1"):
+            xray = numpy.amax(xray) - xray;
+        
+        # normalizing
+        xray = xray - numpy.min(xray);
+        xray = xray / numpy.max(xray);
    
-    # converting to 8 bit unsigned integer (from gray scale 0 to 1)
-    xray = (xray * 255).astype(numpy.uint8);
+        # converting to 8 bit unsigned integer (from gray scale 0 to 1)
+        xray = (xray * 255).astype(numpy.uint8);
 
-    # resizing
-    xray = resize(xray, (224, 224), anti_aliasing = True);
+        # resizing
+        xray = resize(xray, (size, size), anti_aliasing = True);
+        
+        # getting split path for filename
+        path_split = path_to_dcm.split("/");
 
-    # writing image
-    plt.imsave("test.png", xray, cmap = "gray", format = "png");
+        # generating filename
+        filename = "{}-{}-{}".format(path_split[-3], path_split[-2],
+                os.path.splitext(path_split[-1])[0]);
 
+        # writing image
+        plt.imsave(os.path.join(path_to_write, "{}.png".format(filename)), xray, cmap = "gray", format = "png");
 
-generateImages();
+    # checking if path is a directory
+    if(not os.path.isdir(read_dir)):
+        # giving error message
+        print("The path to the directory does not exist.");
+        # exiting 
+        return;
+    
+    # need to do more validation here ===================
+    
+    # if write directory exists delete it
+    if(os.path.isdir(write_dir)):
+        shutil.rmtree(write_dir);
+
+    # creating write directory
+    os.makedirs(write_dir);
+
+    # iterating over training data
+    for subdir, dirs, files in os.walk(read_dir):
+        for file in files:
+            save_as_png(os.path.join(subdir, file), write_dir, 512);
+
+generateImages("/data/kaggle_data/train/", "/data/_kaggle_data/");
