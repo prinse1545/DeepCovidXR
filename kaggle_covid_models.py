@@ -46,7 +46,10 @@ def generateImages():
     # normalizing
     xray = xray - numpy.min(xray);
     xray = xray / numpy.max(xray);
-    
+   
+    # converting to 8 bit unsigned integer (from gray scale 0 to 1)
+    xray = (xray * 255).astype(numpy.uint8);
+
     # resizing
     xray = resize(xray, (224, 224), anti_aliasing = True);
 
