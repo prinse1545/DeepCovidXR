@@ -36,8 +36,9 @@ def buildModel():
 def generateImages():
 
     # generating cropped images using image utils
-    xray = pydicom.filereader.dcmread("/data/kaggle_data/train/005057b3f880/e34afce999c5/3019399c31f4.dcm");
-    # applying voi lut
+    xray = pydicom.filereader.dcmread("/data/kaggle_data/train/6263c19334f8/1acf610fbe04/dfc7b258312f.dcm");
+    # applying volume of interest look up table colors to get opacity in
+    # accordance with dicom image format
     xray = apply_voi_lut(xray.pixel_array, xray);
     
     # fixing inversion stuff
