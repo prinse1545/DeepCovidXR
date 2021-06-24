@@ -43,6 +43,10 @@ def generateImages():
     # fixing inversion stuff
     xray = numpy.amax(xray) - xray;
     
+    # normalizing
+    xray = xray - numpy.min(xray);
+    xray = xray / numpy.max(xray);
+    
     # resizing
     xray = resize(xray, (224, 224), anti_aliasing = True);
 
