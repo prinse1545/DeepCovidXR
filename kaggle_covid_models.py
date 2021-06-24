@@ -75,19 +75,34 @@ def generateImages(read_dir, write_dir):
         print("The path to the directory does not exist.");
         # exiting 
         return;
-    
-    # need to do more validation here ===================
+    if(not os.path.isdir(os.path.join(read_dir, "train")) or not os.path.isdir(os.path.join(read_dir, "test"))):
+        # giving error message
+        print("The given directory must contain a train and test directory");
+        # exiting
+        return;
     
     # if write directory exists delete it
     if(os.path.isdir(write_dir)):
         shutil.rmtree(write_dir);
 
     # creating write directory
-    os.makedirs(write_dir);
+    os.makedirs(os.path.join(write_dir, "train"));
+    os.makedirs(os.path.join(write_dir, "test"));
+    
+    print("Converting training dicom files to png...\n");
 
     # iterating over training data
-    for subdir, dirs, files in os.walk(read_dir):
+    for subdir, dirs, files in os.walk(os.path.join(read_dir, "train")):
         for file in files:
-            save_as_png(os.path.join(subdir, file), write_dir, 512);
+            save_as_png(os.path.join(subdir, file), os.path.join(write_dir,
+                "train"), 512);
+    
+    print("Converting training dicom files to png...\n");
 
-generateImages("/data/kaggle_data/train/", "/data/_kaggle_data/");
+    # iterating over testing data 
+    for subdir, dirs, files in os.walk(os.path.join(read_dir, "test")):
+        for file in files:
+            save_as_png(os.path.join(subdir, file), os.path.join(write_dir,
+                "test"), 512);
+
+generateImages("/data/kaggle_data/", "/data/_kaggle_data/");
