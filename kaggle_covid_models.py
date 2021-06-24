@@ -54,7 +54,7 @@ def generateImages():
     xray = resize(xray, (224, 224), anti_aliasing = True);
 
     # writing image
-    plt.imsave("test6.png", xray, cmap = "gray", format = "png");
+    plt.imsave("test7.png", xray, cmap = "gray", format = "png");
 
 
 generateImages();
