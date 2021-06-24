@@ -6,6 +6,7 @@
 
 # Importing models
 import pydicom
+# from pydicom.pixel_data_handlers.util import apply_voi_lut
 from skimage.transform import resize
 from covid_models import DenseNet
 from tensorflow.keras.models import Sequential, Model
@@ -35,12 +36,18 @@ def buildModel():
 def generateImages():
 
     # generating cropped images using image utils
-    xray = pydicom.filereader.dcmread("/data/kaggle_data/train/005057b3f880/e34afce999c5/3019399c31f4.dcm").pixel_array;
-
+    xray = pydicom.filereader.dcmread("/data/kaggle_data/train/005057b3f880/e34afce999c5/3019399c31f4.dcm");
+    # applying voi lut
+    xray = xray.pixel_array;
+    
+    # fixing inversion stuff
+    xray = numpy.amax(xray) - xray;
+    
     # resizing
     xray = resize(xray, (224, 224), anti_aliasing = True);
 
     # writing image
-    plt.imsave("test5.png", xray, cmap = "gray", format = "png");
+    plt.imsave("test6.png", xray, cmap = "gray", format = "png");
+
 
 generateImages();
