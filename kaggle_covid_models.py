@@ -12,6 +12,7 @@ from tensorflow.keras.models import Sequential, Model
 from tensorflow.keras.layers import Dense
 from PIL import Image 
 import numpy
+import cv2
 
 def buildModel():
 
@@ -38,10 +39,7 @@ def generateImages():
     # resizing
     xray = resize(xray, (224, 224), anti_aliasing = True);
 
-    # making PIL img
-    pil_xray = Image.fromarray(xray.astype(numpy.uint8), mode = "L");
-
-    # saving PIL img
-    pil_xray.save("test2.png");
+    # writing image
+    cv2.imwrite("test3.png",xray);
 
 generateImages();
