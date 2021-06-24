@@ -37,9 +37,9 @@ def generateImages():
     xray = pydicom.filereader.dcmread("/data/kaggle_data/train/005057b3f880/e34afce999c5/3019399c31f4.dcm").pixel_array;
 
     # resizing
-    xray = resize(xray, (224, 224), anti_aliasing = True);
+    #    xray = resize(xray, (224, 224), anti_aliasing = True);
 
     # writing image
-    cv2.imwrite("test3.png",xray);
+    cv2.imwrite("test4.png",xray);
 
 generateImages();
