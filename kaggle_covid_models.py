@@ -9,10 +9,10 @@ import pydicom
 from pydicom.pixel_data_handlers.util import apply_voi_lut
 from skimage.transform import resize
 from covid_models import DenseNet
+from utils import imgUtils
 from tensorflow.keras.models import Sequential, Model
 from tensorflow.keras.layers import Dense
 from tensorflow.keras.losses import SparseCategoricalCrossentropy
-from tensorflow.keras.preprocessing import image_dataset_from_directory
 from tensorflow.test import gpu_device_name
 from tensorflow.config import list_physical_devices
 import pandas
@@ -32,7 +32,7 @@ def build_model():
     dense_built = dense_init.buildBaseModel(224);
     
     # freezing all layers but the last
-    dense_built = dense_init.freeze(dense_built);
+    # dense_built = dense_init.freeze(dense_built);
     
     # editing last layer to be four class model and creating new model
     dense_kbuilt = Model(inputs = dense_built.input, outputs = Dense(4,
@@ -185,19 +185,22 @@ def train_model(train_dir):
     # building model
     model = build_model();
 
-    # getting training data
-    train_set = image_dataset_from_directory(train_dir, seed = 5, image_size
-            = (224, 224), batch_size = 32);
+    # initializing data generator
+    train_gen = imgUtils(img_size = 224).dataGen(0, 0, 0);
+    
+    # creating data flow 
+    train_gen = train_gen.flow_from_directory(train_dir, target_size = (224, 224), class_mode = "inferred", color_mode="rgb", batch_size = 32);
+
 
     # compiling model
     model.compile(loss = SparseCategoricalCrossentropy(from_logits=False), optimizer = "rmsprop", metrics
             = ["accuracy"]);
 
     # training model
-    history = model.fit(train_set, epochs = 8);
+    history = model.fit_generator(train_gen, epochs = 8);
 
 
-print(list_physical_devices("GPU"));
-#train_model("/data/covid_xrays/train");
+# print(list_physical_devices("GPU"));
+train_model("/data/covid_xrays/train");
 # resize_organize_images("/data/kaggle_data/train_study_level.csv",
 #         "/data/_kaggle_data", "/data/covid_xrays");
