@@ -13,6 +13,8 @@ from tensorflow.keras.models import Sequential, Model
 from tensorflow.keras.layers import Dense
 from tensorflow.keras.losses import SparseCategoricalCrossentropy
 from tensorflow.keras.preprocessing import image_dataset_from_directory
+from tensorflow.test import gpu_device_name
+from tensorflow.config import list_physical_devices
 import pandas
 from PIL import Image 
 import matplotlib.pyplot as plt
@@ -194,6 +196,8 @@ def train_model(train_dir):
     # training model
     history = model.fit(train_set, epochs = 8);
 
-train_model("/data/covid_xrays/train");
+
+print(list_physical_devices("GPU"));
+#train_model("/data/covid_xrays/train");
 # resize_organize_images("/data/kaggle_data/train_study_level.csv",
 #         "/data/_kaggle_data", "/data/covid_xrays");
