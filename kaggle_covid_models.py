@@ -37,6 +37,13 @@ def build_model():
     # editing last layer to be four class model and creating new model
     dense_kbuilt = Model(inputs = dense_built.input, outputs = Dense(4,
         activation = "sigmoid", name="last")(dense_built.layers[-2].output));
+
+    # compiling
+    dense_kbuilt.compile(loss = "categorical_crossentroy",
+                         optimizer = "adam",
+                         metrics = ["accuracy"]
+                         );
+
     # returning model
     return dense_kbuilt;
 
@@ -182,23 +189,35 @@ def resize_organize_images(labels_path, read_dir, write_dir):
 
 def train_model(train_dir):
 
+
     # building model
     model = build_model();
 
-    # initializing data generator
-    train_gen = imgUtils(img_size = 224).dataGen(0, 0, 0);
+    # making data generator
+    train_datagen = ImageDataGenerator(
+        zoom_range = 0.05,
+        brightness_range = [0.8, 1.2],
+        fill_mode = "constant",
+        horizontal_flip = True,
+    );
     
     # creating data flow 
-    train_gen = train_gen.flow_from_directory(train_dir, target_size = (224, 224), class_mode = "inferred", color_mode="rgb", batch_size = 32);
+    train_gen = train_datagen.flow_from_directory(train_dir, 
+                                                  target_size = (224, 224), 
+                                                  class_mode = "input", 
+                                                  color_mode="rgb", 
+                                                  batch_size = 16,
+                                                  interpolation="lanczos",
+                                                  shuffle = False
+                                                  );
 
-
-    # compiling model
-    model.compile(loss = SparseCategoricalCrossentropy(from_logits=False), optimizer = "rmsprop", metrics
-            = ["accuracy"]);
+    print(model.summary());
+    print(train_gen.__dict__["image_shape"]);
+    print(train_gen.__dict__["data_format"]);
+    print(train_gen.__dict__["image_shape"]);
 
     # training model
-    history = model.fit_generator(train_gen, epochs = 8);
-
+    history = model.fit_generator(train_gen, epochs = 8, shuffle = False);
 
 # print(list_physical_devices("GPU"));
 train_model("/data/covid_xrays/train");
