@@ -12,6 +12,7 @@ from covid_models import DenseNet
 from utils import imgUtils
 from tensorflow.keras.models import Sequential, Model
 from tensorflow.keras.layers import Dense
+from tensorflow.keras.optimizers import SGD
 from tensorflow.keras.preprocessing.image import ImageDataGenerator
 import pandas
 from PIL import Image 
@@ -38,7 +39,7 @@ def build_model():
 
     # compiling
     dense_kbuilt.compile(loss = "categorical_crossentropy",
-                         optimizer = "adam",
+                         optimizer = SGD(lr = 0.01),
                          metrics = ["accuracy"]
                          );
 
@@ -145,12 +146,18 @@ def resize_organize_images(labels_path, read_dir, write_dir):
     if(os.path.isdir(write_dir)):
         # deleting
         shutil.rmtree(write_dir);
+    
+    # keeping track of classes
+    classes = ["no_pneumonia", "typical_appearance", "indeterminate_appearance", "atypical_appearance"];
 
+    # keeping track of directories
+    dirs = ["train", "valid", "test"];
+    
     # creating directories
-    os.makedirs(os.path.join(write_dir, "train", "no_pneumonia"));
-    os.makedirs(os.path.join(write_dir, "train", "typical_appearance"));
-    os.makedirs(os.path.join(write_dir, "train", "indeterminate_appearance"));
-    os.makedirs(os.path.join(write_dir, "train", "atypical_appearance"));
+    for _class in classes:
+        for _dir in dirs:
+            # writing directory
+            os.makedirs(os.path.join(write_dir, _dir, _class));
 
     # reading in labels
     labels = pandas.read_csv(labels_path);
@@ -158,9 +165,15 @@ def resize_organize_images(labels_path, read_dir, write_dir):
     # initializing index dictionary where each index corresponds to a class
     class_index_dic = { 0:"no_pneumonia", 1:"typical_appearance",
             2:"indeterminate_appearance", 3:"atypical_appearance" };
+    
+    # getting list of filenames in data directory
+    files = os.listdir(os.path.join(read_dir, "train"));
+
+    # saving number of files
+    n_files = len(files);
 
     # iterating over training data
-    for file in os.listdir(os.path.join(read_dir, "train")):
+    for index, file in enumerate(files):
 
         # getting full path
         full_path = os.path.join(read_dir, "train", file);
@@ -180,26 +193,42 @@ def resize_organize_images(labels_path, read_dir, write_dir):
         # getting sample class
         sample_class = labels.iloc[labels.index[labels["id"] ==
             csv_id].tolist()[0]].to_numpy()[1:].argmax();
+        
+        # determining where to save
+        save_location = None;
+
+        if(index <= n_files / 5):
+            save_location = "valid";
+        elif(index <= (2 * n_files) / 5):
+            save_location = "test";
+        else:
+            save_location = "train"
 
         # saving img
-        img.save(os.path.join(write_dir, "train",
+        img.save(os.path.join(write_dir, save_location,
             class_index_dic[sample_class], file));
 
-def train_model(train_dir):
+def train_model(read_dir):
 
+
+    # making directories
+    train_dir = os.path.join(read_dir, "train");
+    valid_dir = os.path.join(read_dir, "valid");
+    test_dir = os.path.join(read_dir, "test");
 
     # building model
     model = build_model();
 
-    # making data generator
+    # making data generators
     train_datagen = ImageDataGenerator(
         zoom_range = 0.05,
         brightness_range = [0.8, 1.2],
         fill_mode = "constant",
         horizontal_flip = True,
     );
+    test_datagen = ImageDataGenerator();
     
-    # creating data flow 
+    # creating data flows 
     train_gen = train_datagen.flow_from_directory(train_dir, 
                                                   target_size = (224, 224), 
                                                   class_mode = "categorical", 
@@ -209,15 +238,33 @@ def train_model(train_dir):
                                                   shuffle = False
                                                   );
 
-    print(model.summary());
-    print(train_gen.__dict__["image_shape"]);
-    print(train_gen.__dict__["data_format"]);
-    print(train_gen.__dict__["image_shape"]);
 
+    valid_gen = test_datagen.flow_from_directory(valid_dir, 
+                                                  target_size = (224, 224), 
+                                                  class_mode = "categorical", 
+                                                  color_mode="rgb", 
+                                                  batch_size = 16,
+                                                  interpolation="lanczos",
+                                                  shuffle = False
+                                                  );
+
+    test_gen = test_datagen.flow_from_directory(test_dir, 
+                                                  target_size = (224, 224), 
+                                                  class_mode = "categorical", 
+                                                  color_mode="rgb", 
+                                                  batch_size = 16,
+                                                  interpolation="lanczos",
+                                                  shuffle = False
+                                                  );
     # training model
-    history = model.fit_generator(train_gen, epochs = 8, shuffle = False);
+    history = model.fit_generator(train_gen, epochs = 8, validation_data = valid_gen, shuffle = False);
+
+    # testing model
+    accuracy = model.evaluate(test_gen);
+
+    print(accuracy);
 
 # print(list_physical_devices("GPU"));
-train_model("/data/covid_xrays/train");
+train_model("/data/covid_xrays");
 # resize_organize_images("/data/kaggle_data/train_study_level.csv",
 #         "/data/_kaggle_data", "/data/covid_xrays");
