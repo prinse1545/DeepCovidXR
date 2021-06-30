@@ -12,9 +12,7 @@ from covid_models import DenseNet
 from utils import imgUtils
 from tensorflow.keras.models import Sequential, Model
 from tensorflow.keras.layers import Dense
-from tensorflow.keras.losses import SparseCategoricalCrossentropy
-from tensorflow.test import gpu_device_name
-from tensorflow.config import list_physical_devices
+from tensorflow.keras.preprocessing.image import ImageDataGenerator
 import pandas
 from PIL import Image 
 import matplotlib.pyplot as plt
@@ -36,10 +34,10 @@ def build_model():
     
     # editing last layer to be four class model and creating new model
     dense_kbuilt = Model(inputs = dense_built.input, outputs = Dense(4,
-        activation = "sigmoid", name="last")(dense_built.layers[-2].output));
+        activation = "softmax", name="last")(dense_built.layers[-2].output));
 
     # compiling
-    dense_kbuilt.compile(loss = "categorical_crossentroy",
+    dense_kbuilt.compile(loss = "categorical_crossentropy",
                          optimizer = "adam",
                          metrics = ["accuracy"]
                          );
@@ -204,7 +202,7 @@ def train_model(train_dir):
     # creating data flow 
     train_gen = train_datagen.flow_from_directory(train_dir, 
                                                   target_size = (224, 224), 
-                                                  class_mode = "input", 
+                                                  class_mode = "categorical", 
                                                   color_mode="rgb", 
                                                   batch_size = 16,
                                                   interpolation="lanczos",
