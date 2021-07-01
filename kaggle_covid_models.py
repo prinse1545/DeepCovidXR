@@ -10,10 +10,11 @@ from pydicom.pixel_data_handlers.util import apply_voi_lut
 from skimage.transform import resize
 from covid_models import DenseNet
 from utils import imgUtils
-from tensorflow.keras.models import Sequential, Model
-from tensorflow.keras.layers import Dense
+from tensorflow.keras.models import Sequential, Model, load_model
+from tensorflow.keras.layers import Dense, GlobalAveragePooling2D
 from tensorflow.keras.optimizers import SGD
 from tensorflow.keras.preprocessing.image import ImageDataGenerator
+from tensorflow.keras.applications import DenseNet121
 import pandas
 from PIL import Image 
 import matplotlib.pyplot as plt
@@ -21,6 +22,7 @@ import shutil
 import numpy
 import cv2
 import os
+
 
 def build_model():
 
@@ -30,21 +32,13 @@ def build_model():
     # building base model
     dense_built = dense_init.buildBaseModel(224);
     
-    # freezing all layers but the last
-    # dense_built = dense_init.freeze(dense_built);
-    
     # editing last layer to be four class model and creating new model
     dense_kbuilt = Model(inputs = dense_built.input, outputs = Dense(4,
         activation = "softmax", name="last")(dense_built.layers[-2].output));
 
-    # compiling
-    dense_kbuilt.compile(loss = "categorical_crossentropy",
-                         optimizer = SGD(lr = 0.01),
-                         metrics = ["accuracy"]
-                         );
 
     # returning model
-    return dense_kbuilt;
+    return dense_kbuilt, dense_init;
 
 def generate_images(read_dir, write_dir):
     # Function: generate_images, a function that takes the kaggle dataset and
@@ -215,9 +209,19 @@ def train_model(read_dir):
     train_dir = os.path.join(read_dir, "train");
     valid_dir = os.path.join(read_dir, "valid");
     test_dir = os.path.join(read_dir, "test");
-
+    
+        
     # building model
-    model = build_model();
+    model, init_model = build_model();
+
+    # freezing model
+    model = init_model.freeze(model);
+
+    # compiling
+    model.compile(loss = "categorical_crossentropy",
+                         optimizer = SGD(lr = 0.0001),
+                         metrics = ["accuracy"]
+                         );
 
     # making data generators
     train_datagen = ImageDataGenerator(
@@ -226,6 +230,7 @@ def train_model(read_dir):
         fill_mode = "constant",
         horizontal_flip = True,
     );
+
     test_datagen = ImageDataGenerator();
     
     # creating data flows 
@@ -235,7 +240,6 @@ def train_model(read_dir):
                                                   color_mode="rgb", 
                                                   batch_size = 16,
                                                   interpolation="lanczos",
-                                                  shuffle = False
                                                   );
 
 
@@ -245,7 +249,6 @@ def train_model(read_dir):
                                                   color_mode="rgb", 
                                                   batch_size = 16,
                                                   interpolation="lanczos",
-                                                  shuffle = False
                                                   );
 
     test_gen = test_datagen.flow_from_directory(test_dir, 
@@ -254,11 +257,43 @@ def train_model(read_dir):
                                                   color_mode="rgb", 
                                                   batch_size = 16,
                                                   interpolation="lanczos",
-                                                  shuffle = False
-                                                  );
-    # training model
-    history = model.fit_generator(train_gen, epochs = 8, validation_data = valid_gen, shuffle = False);
+                                                );
 
+    if(not os.path.isfile("/data/dense.h5")):
+        # building model
+        model, init_model = build_model();
+
+        # freezing model
+        model = init_model.freeze(model);
+
+        # compiling
+        model.compile(loss = "categorical_crossentropy",
+                             optimizer = SGD(lr = 0.0001),
+                             metrics = ["accuracy"]
+                             );
+        # training model
+        history = model.fit_generator(train_gen, epochs = 10, validation_data = valid_gen);
+
+        # saving model
+        model.save("/data/dense.h5");
+
+    # loading model anew
+    base_model = DenseNet121(weights = "imagenet", include_top = False, 
+                                input_shape = (224, 224, 3))
+    x = base_model.output
+    x = GlobalAveragePooling2D()(x)
+    predictions = Dense(4, activation = "softmax", name = "last")(x)
+    model = Model(inputs = base_model.input, outputs = predictions)
+    model.load_weights("/data/dense.h5")
+
+    # compiling
+    model.compile(loss = "categorical_crossentropy",
+                         optimizer = SGD(lr = 0.0001),
+                         metrics = ["accuracy"]
+                         );
+    # training
+    history = model.fit_generator(train_gen, epochs = 30, validation_data = valid_gen);
+    
     # testing model
     accuracy = model.evaluate(test_gen);
 
