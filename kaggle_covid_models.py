@@ -15,6 +15,7 @@ from tensorflow.keras.layers import Dense, GlobalAveragePooling2D
 from tensorflow.keras.optimizers import SGD
 from tensorflow.keras.preprocessing.image import ImageDataGenerator
 from tensorflow.keras.applications import DenseNet121
+import tensorflow
 import pandas
 from PIL import Image 
 import matplotlib.pyplot as plt
@@ -204,95 +205,114 @@ def resize_organize_images(labels_path, read_dir, write_dir):
 
 def train_model(read_dir):
 
+    # defining strat
+    strategy = tensorflow.distribute.MirroredStrategy();
+    print('Number of devices: {}'.format(strategy.num_replicas_in_sync));
 
-    # making directories
-    train_dir = os.path.join(read_dir, "train");
-    valid_dir = os.path.join(read_dir, "valid");
-    test_dir = os.path.join(read_dir, "test");
-    
+    with strategy.scope():
+        # making directories
+        train_dir = os.path.join(read_dir, "train");
+        valid_dir = os.path.join(read_dir, "valid");
+        test_dir = os.path.join(read_dir, "test");
         
-    # building model
-    model, init_model = build_model();
 
-    # freezing model
-    model = init_model.freeze(model);
+        # making data generators
+        train_datagen = ImageDataGenerator(
+            zoom_range = 0.05,
+            brightness_range = [0.8, 1.2],
+            fill_mode = "constant",
+            horizontal_flip = True,
+        );
 
-    # compiling
-    model.compile(loss = "categorical_crossentropy",
-                         optimizer = SGD(lr = 0.0001),
-                         metrics = ["accuracy"]
-                         );
+        test_datagen = ImageDataGenerator();
+        
+        # creating data flows 
+        train_gen = train_datagen.flow_from_directory(train_dir, 
+                                                      target_size = (224, 224), 
+                                                      class_mode = "categorical", 
+                                                      color_mode="rgb", 
+                                                      batch_size = 16,
+                                                      interpolation="lanczos",
+                                                      );
 
-    # making data generators
-    train_datagen = ImageDataGenerator(
-        zoom_range = 0.05,
-        brightness_range = [0.8, 1.2],
-        fill_mode = "constant",
-        horizontal_flip = True,
-    );
 
-    test_datagen = ImageDataGenerator();
+        valid_gen = test_datagen.flow_from_directory(valid_dir, 
+                                                      target_size = (224, 224), 
+                                                      class_mode = "categorical", 
+                                                      color_mode="rgb", 
+                                                      batch_size = 16,
+                                                      interpolation="lanczos",
+                                                      );
+
+        test_gen = test_datagen.flow_from_directory(test_dir, 
+                                                      target_size = (224, 224), 
+                                                      class_mode = "categorical", 
+                                                      color_mode="rgb", 
+                                                      batch_size = 16,
+                                                      interpolation="lanczos",
+                                                    );
+        # generating weights dictionary
+
+        # getting number of files in training directory
+        n_cat_files = int(sum([len(files) for r, d, files in os.walk(valid_dir)]) / 4);
+
+        # initialzing loss weights
+        weights_dict = {};
+
+        for key in valid_gen.class_indices.keys():
+            
+            index = valid_gen.class_indices[key]; # getting index
+            # generating weight
+            weights_dict[index] = n_cat_files / len(os.listdir(os.path.join(valid_dir, key)));
+            print(key, weights_dict[index], len(os.listdir(os.path.join(valid_dir, key))));
     
-    # creating data flows 
-    train_gen = train_datagen.flow_from_directory(train_dir, 
-                                                  target_size = (224, 224), 
-                                                  class_mode = "categorical", 
-                                                  color_mode="rgb", 
-                                                  batch_size = 16,
-                                                  interpolation="lanczos",
-                                                  );
-
-
-    valid_gen = test_datagen.flow_from_directory(valid_dir, 
-                                                  target_size = (224, 224), 
-                                                  class_mode = "categorical", 
-                                                  color_mode="rgb", 
-                                                  batch_size = 16,
-                                                  interpolation="lanczos",
-                                                  );
-
-    test_gen = test_datagen.flow_from_directory(test_dir, 
-                                                  target_size = (224, 224), 
-                                                  class_mode = "categorical", 
-                                                  color_mode="rgb", 
-                                                  batch_size = 16,
-                                                  interpolation="lanczos",
-                                                );
 
     if(not os.path.isfile("/data/dense.h5")):
-        # building model
-        model, init_model = build_model();
+        with strategy.scope():
+            # building model
+            model, init_model = build_model();
 
-        # freezing model
-        model = init_model.freeze(model);
+            # freezing model
+            model = init_model.freeze(model);
 
-        # compiling
-        model.compile(loss = "categorical_crossentropy",
-                             optimizer = SGD(lr = 0.0001),
-                             metrics = ["accuracy"]
-                             );
+            # compiling
+            model.compile(loss = "categorical_crossentropy",
+                                 optimizer = SGD(lr = 0.0001),
+                                 metrics = ["accuracy"],
+                                 );
         # training model
-        history = model.fit_generator(train_gen, epochs = 10, validation_data = valid_gen);
+        history = model.fit(
+                train_gen, 
+                epochs = 10, 
+                validation_data = valid_gen,
+                class_weight = weights_dict
+        );
 
         # saving model
         model.save("/data/dense.h5");
 
-    # loading model anew
-    base_model = DenseNet121(weights = "imagenet", include_top = False, 
-                                input_shape = (224, 224, 3))
-    x = base_model.output
-    x = GlobalAveragePooling2D()(x)
-    predictions = Dense(4, activation = "softmax", name = "last")(x)
-    model = Model(inputs = base_model.input, outputs = predictions)
-    model.load_weights("/data/dense.h5")
+    with strategy.scope():
+        # loading model anew
+        base_model = DenseNet121(weights = "imagenet", include_top = False, 
+                                    input_shape = (224, 224, 3))
+        x = base_model.output
+        x = GlobalAveragePooling2D()(x)
+        predictions = Dense(4, activation = "softmax", name = "last")(x)
+        model = Model(inputs = base_model.input, outputs = predictions)
+        model.load_weights("/data/dense.h5")
 
-    # compiling
-    model.compile(loss = "categorical_crossentropy",
-                         optimizer = SGD(lr = 0.0001),
-                         metrics = ["accuracy"]
-                         );
+        # compiling
+        model.compile(loss = "categorical_crossentropy",
+                             optimizer = SGD(lr = 0.0001),
+                             metrics = ["accuracy"],
+                             );
     # training
-    history = model.fit_generator(train_gen, epochs = 30, validation_data = valid_gen);
+    history = model.fit(
+            train_gen, 
+            epochs = 30, 
+            validation_data = valid_gen,
+            class_weight = weights_dict
+    );
     
     # testing model
     accuracy = model.evaluate(test_gen);
