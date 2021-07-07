@@ -15,15 +15,16 @@ from tensorflow.keras.layers import Dense, GlobalAveragePooling2D
 from tensorflow.keras.optimizers import SGD
 from tensorflow.keras.preprocessing.image import ImageDataGenerator
 from tensorflow.keras.applications import DenseNet121
+from tensorflow.keras.metrics import AUC, Precision, Recall
 import tensorflow
 import pandas
 from PIL import Image 
 import matplotlib.pyplot as plt
 import shutil
 import numpy
+import json
 import cv2
 import os
-
 
 def build_model():
 
@@ -277,13 +278,13 @@ def train_model(read_dir):
 
             # compiling
             model.compile(loss = "categorical_crossentropy",
-                                 optimizer = SGD(lr = 0.0001),
-                                 metrics = ["accuracy"],
+                                 optimizer = SGD(lr = 0.001),
+                                 metrics = ["accuracy", AUC(name = "auc"), Precision(name = "prec"), Recall(name = "rec")],
                                  );
         # training model
         history = model.fit(
                 train_gen, 
-                epochs = 10, 
+                epochs = 20, 
                 validation_data = valid_gen,
                 class_weight = weights_dict
         );
@@ -303,13 +304,13 @@ def train_model(read_dir):
 
         # compiling
         model.compile(loss = "categorical_crossentropy",
-                             optimizer = SGD(lr = 0.0001),
-                             metrics = ["accuracy"],
+                             optimizer = SGD(lr = 0.001),
+                             metrics = ["accuracy", AUC(name = "auc"), Precision(name = "prec"), Recall(name = "rec")],
                              );
     # training
     history = model.fit(
             train_gen, 
-            epochs = 30, 
+            epochs = 50, 
             validation_data = valid_gen,
             class_weight = weights_dict
     );
@@ -318,6 +319,17 @@ def train_model(read_dir):
     accuracy = model.evaluate(test_gen);
 
     print(accuracy);
+
+    model.save("/data/final.hd5");
+
+    # opening file to save history
+    h_file = open("/data/mode_history", "w");
+
+    # writing
+    h_file.write(json.dumps(history.history));
+
+    # closing
+    h_file.close();
 
 # print(list_physical_devices("GPU"));
 train_model("/data/covid_xrays");
