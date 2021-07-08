@@ -320,18 +320,48 @@ def train_model(read_dir):
 
     print(accuracy);
 
-    model.save("/data/final.hd5");
+    model.save("/data/final.h5");
 
-    # opening file to save history
-    h_file = open("/data/mode_history", "w");
+    # saving history
+    numpy.save("model_history.npy", history.history);
 
-    # writing
-    h_file.write(json.dumps(history.history));
+def makeGraphs(hist_path):
 
-    # closing
-    h_file.close();
+    # seeing if path to file with history exists
+    if(not os.path.isfile(hist_path)):
+        # printing error and returning 
+        print("The file for printing history does not exist!");
+
+        return;
+
+    # opening file
+    hist = numpy.load(hist_path, allow_pickle = True).item();
+
+    print(hist.keys());
+    # making x axis
+    x_axis = list(range(1, len(hist["accuracy"]) + 1));
+   
+    # accuracy and loss plots
+    a_fig, a_ax = plt.subplots();
+    l_fig, l_ax = plt.subplots();
+
+    a_ax.plot(x_axis, hist["accuracy"], "ro", label = "accuracy");
+    l_ax.plot(x_axis, hist["loss"], "ro", label = "loss");
+    a_ax.plot(x_axis, hist["val_accuracy"], "bo", label = "validation accuracy");
+    l_ax.plot(x_axis, hist["val_loss"], "bo", label = "validation loss");
+
+    # setting labels
+    a_ax.set_xlabel("epochs");
+    l_ax.set_xlabel("epochs");
+
+    a_ax.legend();
+    l_ax.legend();
+    # saving figure
+    l_fig.savefig("/data/loss_plot.png")
+    a_fig.savefig("/data/accuracy_plot.png");
 
 # print(list_physical_devices("GPU"));
-train_model("/data/covid_xrays");
+# train_model("/data/covid_xrays");
+makeGraphs("/data/model_history.npy");
 # resize_organize_images("/data/kaggle_data/train_study_level.csv",
 #         "/data/_kaggle_data", "/data/covid_xrays");
