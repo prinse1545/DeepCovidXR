@@ -5,10 +5,10 @@
 # 2021-06-22
 
 # Importing models
+import argparse
 import pydicom
 from pydicom.pixel_data_handlers.util import apply_voi_lut
-from skimage.transform import resize
-from covid_models import DenseNet
+from covid_models import DenseNet, XceptionNet, ResNet, EfficientNet, InceptionNet, hyperModel, InceptionResNet
 from utils import imgUtils
 from tensorflow.keras.models import Sequential, Model, load_model
 from tensorflow.keras.layers import Dense, GlobalAveragePooling2D
@@ -17,8 +17,6 @@ from tensorflow.keras.preprocessing.image import ImageDataGenerator
 from tensorflow.keras.applications import DenseNet121
 from tensorflow.keras.metrics import AUC, Precision, Recall
 import tensorflow
-import pandas
-from PIL import Image 
 import matplotlib.pyplot as plt
 import shutil
 import numpy
@@ -26,185 +24,45 @@ import json
 import cv2
 import os
 
-def build_model():
+def build_model(model_name):
+
+    # building model dictionary
+    model_dict = { 
+            "dense": DenseNet, 
+            "xception": XceptionNet,
+            "resnet": ResNet,
+            "efficient": EfficientNet,
+            "hyper": hyperModel,
+            "inception": InceptionNet,
+            "inceptionr": InceptionResNet
+    };
+    # building weight dictionary
+    weight_dict = {
+            "dense": "DenseNet",
+            "xception": "Xception",
+            "resnet": "ResNet50",
+            "efficient": "EfficientNet",
+            "hyper": None,
+            "inception": "Inception",
+            "inceptionr": "InceptionResNet"
+    };
 
     # initializing model with access to weights
-    dense_init = DenseNet("/data/covid_weights/DenseNet_224_up_crop.h5");
+    init = model_dict[model_name]("/data/covid_weights/{}_224_up_crop.h5".format(weight_dict[model_name]));
             
     # building base model
-    dense_built = dense_init.buildBaseModel(224);
+    built = init.buildBaseModel(224);
     
     # editing last layer to be four class model and creating new model
-    dense_kbuilt = Model(inputs = dense_built.input, outputs = Dense(4,
-        activation = "softmax", name="last")(dense_built.layers[-2].output));
+    kbuilt = Model(inputs = built.input, outputs = Dense(4,
+        activation = "softmax", name="last")(built.layers[-2].output));
 
 
     # returning model
-    return dense_kbuilt, dense_init;
+    return kbuilt, init;
 
-def generate_images(read_dir, write_dir):
-    # Function: generate_images, a function that takes the kaggle dataset and
-    # converts the dicoms to pngs. 
 
-    # Warning: This function takes several hours to run.
-
-    # Parameter(s):
-
-    #     read_dir - the directory that should be read from
-    #     write_dir - the directory that should be written to
-
-    # Return Value(s):
-
-    #     None
-
-    def save_as_png(path_to_dcm, path_to_write, size = 512):
-
-        # generating cropped images using image utils
-        xray_dicom = pydicom.filereader.dcmread(path_to_dcm);
-        # applying volume of interest look up table colors to get opacity in
-        # accordance with dicom image format
-        xray = apply_voi_lut(xray_dicom.pixel_array, xray_dicom);
-        
-        # fixing inversion stuff if needed
-        if(xray_dicom.PhotometricInterpretation == "MONOCHROME1"):
-            xray = numpy.amax(xray) - xray;
-        
-        # normalizing
-        xray = xray - numpy.min(xray);
-        xray = xray / numpy.max(xray);
-   
-        # converting to 8 bit unsigned integer (from gray scale 0 to 1)
-        xray = (xray * 255).astype(numpy.uint8);
-
-        # resizing
-        xray = resize(xray, (size, size), anti_aliasing = True);
-        
-        # getting split path for filename
-        path_split = path_to_dcm.split("/");
-
-        # generating filename
-        filename = "{}-{}-{}".format(path_split[-3], path_split[-2],
-                os.path.splitext(path_split[-1])[0]);
-
-        # writing image
-        plt.imsave(os.path.join(path_to_write, "{}.png".format(filename)), xray, cmap = "gray", format = "png");
-
-    # checking if path is a directory
-    if(not os.path.isdir(read_dir)):
-        # giving error message
-        print("The path to the directory does not exist.");
-        # exiting 
-        return;
-    if(not os.path.isdir(os.path.join(read_dir, "train")) or not os.path.isdir(os.path.join(read_dir, "test"))):
-        # giving error message
-        print("The given directory must contain a train and test directory");
-        # exiting
-        return;
-    
-    # if write directory exists delete it
-    if(os.path.isdir(write_dir)):
-        shutil.rmtree(write_dir);
-
-    # creating write directory
-    os.makedirs(os.path.join(write_dir, "train"));
-    os.makedirs(os.path.join(write_dir, "test"));
-    
-    print("Converting training dicom files to png...\n");
-    
-    # initialzing training counter
-    train_count = 0;
-
-    # iterating over training data
-    for subdir, dirs, files in os.walk(os.path.join(read_dir, "train")):
-        for file in files:
-            save_as_png(os.path.join(subdir, file), os.path.join(write_dir,
-                "train"), 512);
-            train_count = train_count + 1;
-            print("Saved {} training images".format(train_count));
-
-    
-    print("Converting training dicom files to png...\n");
-
-    # initializing testing counter
-    test_count = 0;
-
-    # iterating over testing data 
-    for subdir, dirs, files in os.walk(os.path.join(read_dir, "test")):
-        for file in files:
-            save_as_png(os.path.join(subdir, file), os.path.join(write_dir,
-                "test"), 512);
-            test_count = test_count + 1;
-            print("Saved {} testing images".format(test_count));
-
-def resize_organize_images(labels_path, read_dir, write_dir):
-    
-    # checking if write directory exists and deleting if it does
-    if(os.path.isdir(write_dir)):
-        # deleting
-        shutil.rmtree(write_dir);
-    
-    # keeping track of classes
-    classes = ["no_pneumonia", "typical_appearance", "indeterminate_appearance", "atypical_appearance"];
-
-    # keeping track of directories
-    dirs = ["train", "valid", "test"];
-    
-    # creating directories
-    for _class in classes:
-        for _dir in dirs:
-            # writing directory
-            os.makedirs(os.path.join(write_dir, _dir, _class));
-
-    # reading in labels
-    labels = pandas.read_csv(labels_path);
-
-    # initializing index dictionary where each index corresponds to a class
-    class_index_dic = { 0:"no_pneumonia", 1:"typical_appearance",
-            2:"indeterminate_appearance", 3:"atypical_appearance" };
-    
-    # getting list of filenames in data directory
-    files = os.listdir(os.path.join(read_dir, "train"));
-
-    # saving number of files
-    n_files = len(files);
-
-    # iterating over training data
-    for index, file in enumerate(files):
-
-        # getting full path
-        full_path = os.path.join(read_dir, "train", file);
-
-        # opening image
-        img = Image.open(full_path);
-
-        # resizing
-        img = img.resize((224, 224));
-
-        # getting study id
-        study_id = file.split("-")[0];
-
-        # getting csv id
-        csv_id = "{}_study".format(study_id);
-       
-        # getting sample class
-        sample_class = labels.iloc[labels.index[labels["id"] ==
-            csv_id].tolist()[0]].to_numpy()[1:].argmax();
-        
-        # determining where to save
-        save_location = None;
-
-        if(index <= n_files / 5):
-            save_location = "valid";
-        elif(index <= (2 * n_files) / 5):
-            save_location = "test";
-        else:
-            save_location = "train"
-
-        # saving img
-        img.save(os.path.join(write_dir, save_location,
-            class_index_dic[sample_class], file));
-
-def train_model(read_dir):
+def train_model(args):
 
     # defining strat
     strategy = tensorflow.distribute.MirroredStrategy();
@@ -212,9 +70,9 @@ def train_model(read_dir):
 
     with strategy.scope():
         # making directories
-        train_dir = os.path.join(read_dir, "train");
-        valid_dir = os.path.join(read_dir, "valid");
-        test_dir = os.path.join(read_dir, "test");
+        train_dir = os.path.join(args.data, "train");
+        valid_dir = os.path.join(args.data, "valid");
+        test_dir = os.path.join(args.data, "test");
         
 
         # making data generators
@@ -252,7 +110,6 @@ def train_model(read_dir):
                                                       batch_size = 16,
                                                       interpolation="lanczos",
                                                     );
-        # generating weights dictionary
 
         # getting number of files in training directory
         n_cat_files = int(sum([len(files) for r, d, files in os.walk(valid_dir)]) / 4);
@@ -362,6 +219,29 @@ def makeGraphs(hist_path):
 
 # print(list_physical_devices("GPU"));
 # train_model("/data/covid_xrays");
-makeGraphs("/data/model_history.npy");
+# makeGraphs("/data/model_history.npy");
 # resize_organize_images("/data/kaggle_data/train_study_level.csv",
 #         "/data/_kaggle_data", "/data/covid_xrays");
+
+if(__name__ == "__main__"):
+    # This is the main function of the training script
+    
+    # initializing parser
+    parser = argparse.ArgumentParser();
+
+    # adding arguments
+    parser.add_argument("-d", "--data", type = str, help = "Where the data lives (in designated file structure)");
+    parser.add_argument("-f", "--function", type = str, help = "Either train_model (for one indidual model) or train_ensemble (for all models)");
+    parser.add_argument("-m", "--model", type = str, help = "Model you wish to individually train (dense, efficient, hyper, inception, inceptionr, resnet, or xception)");
+    parser.add_argiment("w", "--write", type = str, help = "Directory that weights are written to");
+    parser.add_argument("lw", "--load_weights", type = str, help = "Where weights (for transfer learning) are loaded from");
+
+    # parsing arguments
+    args = parser.parse_args();
+
+    # initializing function dictionary
+    functions = { "train_model": train_model, "train_ensemble": None };
+    
+    # executing script
+    functions[args.function](args);
+
