@@ -4,6 +4,7 @@ h5py==2.10.0
 Keras==2.3.1
 keras-tuner==1.0.1
 git+https://github.com/raghakot/keras-vis
+git+https://github.com/philferriere/cocoapi.git#subdirectory=PythonAPI
 matplotlib==3.2.1
 nibabel==3.1.0
 numpy==1.17.0

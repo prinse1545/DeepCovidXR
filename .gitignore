@@ -1,1 +1,15 @@
 *.swp
+*.tfrecord
+*.h5
+efficient_weights/efficient-final.h5
+efficient_weights/efficient-pre.h5
+efficient_weights/efficient_history.npy
+model_weights/xception-final.h5
+model_weights/xception-pre.h5
+model_weights/xception_history.npy
+object_detection/workspace/annotations/test-record.tfrecord
+object_detection/workspace/annotations/train-record.tfrecord
+object_detection/workspace/annotations/valid-record.tfrecord
+resnet_weights/inceptionr-final.h5
+resnet_weights/inceptionr-pre.h5
+resnet_weights/inceptionr_history.npy

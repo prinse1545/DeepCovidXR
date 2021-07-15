@@ -5,301 +5,233 @@
 # 2021-06-22
 
 # Importing models
+import argparse
 import pydicom
 from pydicom.pixel_data_handlers.util import apply_voi_lut
-from skimage.transform import resize
-from covid_models import DenseNet
+from covid_models import DenseNet, XceptionNet, ResNet, EfficientNet, InceptionNet, hyperModel, InceptionResNet
 from utils import imgUtils
 from tensorflow.keras.models import Sequential, Model, load_model
 from tensorflow.keras.layers import Dense, GlobalAveragePooling2D
 from tensorflow.keras.optimizers import SGD
 from tensorflow.keras.preprocessing.image import ImageDataGenerator
 from tensorflow.keras.applications import DenseNet121
-import pandas
-from PIL import Image 
-import matplotlib.pyplot as plt
+from tensorflow.keras.metrics import AUC, Precision, Recall
+import tensorflow
 import shutil
 import numpy
+import json
 import cv2
 import os
 
+def build_model(model_name):
 
-def build_model():
+    # building model dictionary
+    model_dict = { 
+            "dense": DenseNet, 
+            "xception": XceptionNet,
+            "resnet": ResNet,
+            "efficient": EfficientNet,
+            "hyper": hyperModel,
+            "inception": InceptionNet,
+            "inceptionr": InceptionResNet
+    };
+    # building weight dictionary
+    weight_dict = {
+            "dense": "DenseNet",
+            "xception": "Xception",
+            "resnet": "InceptionResNet",
+            "efficient": "EfficientNet",
+            "hyper": None,
+            "inception": "Inception",
+            "inceptionr": "InceptionResNet"
+    };
 
     # initializing model with access to weights
-    dense_init = DenseNet("/data/covid_weights/DenseNet_224_up_crop.h5");
+    init = model_dict[model_name]("/data/covid_weights/{}_224_up_uncrop.h5".format(weight_dict[model_name]));
             
     # building base model
-    dense_built = dense_init.buildBaseModel(224);
+    built = init.buildBaseModel(224);
     
     # editing last layer to be four class model and creating new model
-    dense_kbuilt = Model(inputs = dense_built.input, outputs = Dense(4,
-        activation = "softmax", name="last")(dense_built.layers[-2].output));
+    kbuilt = Model(inputs = built.input, outputs = Dense(4,
+        activation = "softmax", name="last")(built.layers[-2].output));
 
 
     # returning model
-    return dense_kbuilt, dense_init;
+    return kbuilt, init;
 
-def generate_images(read_dir, write_dir):
-    # Function: generate_images, a function that takes the kaggle dataset and
-    # converts the dicoms to pngs. 
 
-    # Warning: This function takes several hours to run.
+def train_model(args):
 
-    # Parameter(s):
+    # defining strat
+    strategy = tensorflow.distribute.MirroredStrategy();
+    print('Number of devices: {}'.format(strategy.num_replicas_in_sync));
 
-    #     read_dir - the directory that should be read from
-    #     write_dir - the directory that should be written to
-
-    # Return Value(s):
-
-    #     None
-
-    def save_as_png(path_to_dcm, path_to_write, size = 512):
-
-        # generating cropped images using image utils
-        xray_dicom = pydicom.filereader.dcmread(path_to_dcm);
-        # applying volume of interest look up table colors to get opacity in
-        # accordance with dicom image format
-        xray = apply_voi_lut(xray_dicom.pixel_array, xray_dicom);
+    with strategy.scope():
+        # making directories
+        train_dir = os.path.join(args.data, "train");
+        valid_dir = os.path.join(args.data, "valid");
+        test_dir = os.path.join(args.data, "test");
         
-        # fixing inversion stuff if needed
-        if(xray_dicom.PhotometricInterpretation == "MONOCHROME1"):
-            xray = numpy.amax(xray) - xray;
+
+        # making data generators
+        train_datagen = ImageDataGenerator(
+            zoom_range = 0.05,
+            brightness_range = [0.8, 1.2],
+            fill_mode = "constant",
+            horizontal_flip = True,
+        );
+
+        test_datagen = ImageDataGenerator();
         
-        # normalizing
-        xray = xray - numpy.min(xray);
-        xray = xray / numpy.max(xray);
+        # creating data flows 
+        train_gen = train_datagen.flow_from_directory(train_dir, 
+                                                      target_size = (224, 224), 
+                                                      class_mode = "categorical", 
+                                                      color_mode="rgb", 
+                                                      batch_size = 16,
+                                                      interpolation="lanczos",
+                                                      );
+
+
+        valid_gen = test_datagen.flow_from_directory(valid_dir, 
+                                                      target_size = (224, 224), 
+                                                      class_mode = "categorical", 
+                                                      color_mode="rgb", 
+                                                      batch_size = 16,
+                                                      interpolation="lanczos",
+                                                      );
+
+        test_gen = test_datagen.flow_from_directory(test_dir, 
+                                                      target_size = (224, 224), 
+                                                      class_mode = "categorical", 
+                                                      color_mode="rgb", 
+                                                      batch_size = 16,
+                                                      interpolation="lanczos",
+                                                    );
+
+        # getting number of files in training directory
+        n_cat_files = int(sum([len(files) for r, d, files in os.walk(valid_dir)]) / 4);
+
+        # initialzing loss weights
+        weights_dict = {};
+
+        for key in valid_gen.class_indices.keys():
+            
+            index = valid_gen.class_indices[key]; # getting index
+            # generating weight
+            weights_dict[index] = n_cat_files / len(os.listdir(os.path.join(valid_dir, key)));
+            print(key, weights_dict[index], len(os.listdir(os.path.join(valid_dir, key))));
    
-        # converting to 8 bit unsigned integer (from gray scale 0 to 1)
-        xray = (xray * 255).astype(numpy.uint8);
+    # deleting write if exists
+    if(os.path.isdir(args.write)):
+        shutil.rmtree(args.write);
 
-        # resizing
-        xray = resize(xray, (size, size), anti_aliasing = True);
+    # making write
+    os.makedirs(args.write);
+
+    if(not os.path.isfile(os.path.join(args.write, "{}-pre.h5".format(args.model)))):
+        with strategy.scope():
+            # building model
+            model, init_model = build_model(args.model);
+
+            # freezing model
+            model = init_model.freeze(model);
+
+            # compiling
+            model.compile(loss = "categorical_crossentropy",
+                                 optimizer = SGD(lr = 0.00002),
+                                 metrics = ["accuracy", AUC(name = "auc"), Precision(name = "prec"), Recall(name = "rec")],
+                                 );
+        # training model
+        history = model.fit(
+                train_gen, 
+                epochs = 20, 
+                validation_data = valid_gen,
+                class_weight = weights_dict
+        );
+
+        # saving model
+        model.save(os.path.join(args.write, "{}-pre.h5".format(args.model)));
+
+    with strategy.scope():
+        # building model dictionary
+        model_dict = { 
+                "dense": DenseNet, 
+                "xception": XceptionNet,
+                "resnet": ResNet,
+                "efficient": EfficientNet,
+                "hyper": hyperModel,
+                "inception": InceptionNet,
+                "inceptionr": InceptionResNet
+        };
         
-        # getting split path for filename
-        path_split = path_to_dcm.split("/");
-
-        # generating filename
-        filename = "{}-{}-{}".format(path_split[-3], path_split[-2],
-                os.path.splitext(path_split[-1])[0]);
-
-        # writing image
-        plt.imsave(os.path.join(path_to_write, "{}.png".format(filename)), xray, cmap = "gray", format = "png");
-
-    # checking if path is a directory
-    if(not os.path.isdir(read_dir)):
-        # giving error message
-        print("The path to the directory does not exist.");
-        # exiting 
-        return;
-    if(not os.path.isdir(os.path.join(read_dir, "train")) or not os.path.isdir(os.path.join(read_dir, "test"))):
-        # giving error message
-        print("The given directory must contain a train and test directory");
-        # exiting
-        return;
-    
-    # if write directory exists delete it
-    if(os.path.isdir(write_dir)):
-        shutil.rmtree(write_dir);
-
-    # creating write directory
-    os.makedirs(os.path.join(write_dir, "train"));
-    os.makedirs(os.path.join(write_dir, "test"));
-    
-    print("Converting training dicom files to png...\n");
-    
-    # initialzing training counter
-    train_count = 0;
-
-    # iterating over training data
-    for subdir, dirs, files in os.walk(os.path.join(read_dir, "train")):
-        for file in files:
-            save_as_png(os.path.join(subdir, file), os.path.join(write_dir,
-                "train"), 512);
-            train_count = train_count + 1;
-            print("Saved {} training images".format(train_count));
-
-    
-    print("Converting training dicom files to png...\n");
-
-    # initializing testing counter
-    test_count = 0;
-
-    # iterating over testing data 
-    for subdir, dirs, files in os.walk(os.path.join(read_dir, "test")):
-        for file in files:
-            save_as_png(os.path.join(subdir, file), os.path.join(write_dir,
-                "test"), 512);
-            test_count = test_count + 1;
-            print("Saved {} testing images".format(test_count));
-
-def resize_organize_images(labels_path, read_dir, write_dir):
-    
-    # checking if write directory exists and deleting if it does
-    if(os.path.isdir(write_dir)):
-        # deleting
-        shutil.rmtree(write_dir);
-    
-    # keeping track of classes
-    classes = ["no_pneumonia", "typical_appearance", "indeterminate_appearance", "atypical_appearance"];
-
-    # keeping track of directories
-    dirs = ["train", "valid", "test"];
-    
-    # creating directories
-    for _class in classes:
-        for _dir in dirs:
-            # writing directory
-            os.makedirs(os.path.join(write_dir, _dir, _class));
-
-    # reading in labels
-    labels = pandas.read_csv(labels_path);
-
-    # initializing index dictionary where each index corresponds to a class
-    class_index_dic = { 0:"no_pneumonia", 1:"typical_appearance",
-            2:"indeterminate_appearance", 3:"atypical_appearance" };
-    
-    # getting list of filenames in data directory
-    files = os.listdir(os.path.join(read_dir, "train"));
-
-    # saving number of files
-    n_files = len(files);
-
-    # iterating over training data
-    for index, file in enumerate(files):
-
-        # getting full path
-        full_path = os.path.join(read_dir, "train", file);
-
-        # opening image
-        img = Image.open(full_path);
-
-        # resizing
-        img = img.resize((224, 224));
-
-        # getting study id
-        study_id = file.split("-")[0];
-
-        # getting csv id
-        csv_id = "{}_study".format(study_id);
-       
-        # getting sample class
-        sample_class = labels.iloc[labels.index[labels["id"] ==
-            csv_id].tolist()[0]].to_numpy()[1:].argmax();
+        # initializing model with access to weights
+        init = model_dict[args.model]("/data/covid_weights/EfficientNet_224_up_uncrop.h5");
+                
+        # building base model
+        built = init.buildBaseModel(224);
         
-        # determining where to save
-        save_location = None;
-
-        if(index <= n_files / 5):
-            save_location = "valid";
-        elif(index <= (2 * n_files) / 5):
-            save_location = "test";
-        else:
-            save_location = "train"
-
-        # saving img
-        img.save(os.path.join(write_dir, save_location,
-            class_index_dic[sample_class], file));
-
-def train_model(read_dir):
-
-
-    # making directories
-    train_dir = os.path.join(read_dir, "train");
-    valid_dir = os.path.join(read_dir, "valid");
-    test_dir = os.path.join(read_dir, "test");
-    
-        
-    # building model
-    model, init_model = build_model();
-
-    # freezing model
-    model = init_model.freeze(model);
-
-    # compiling
-    model.compile(loss = "categorical_crossentropy",
-                         optimizer = SGD(lr = 0.0001),
-                         metrics = ["accuracy"]
-                         );
-
-    # making data generators
-    train_datagen = ImageDataGenerator(
-        zoom_range = 0.05,
-        brightness_range = [0.8, 1.2],
-        fill_mode = "constant",
-        horizontal_flip = True,
-    );
-
-    test_datagen = ImageDataGenerator();
-    
-    # creating data flows 
-    train_gen = train_datagen.flow_from_directory(train_dir, 
-                                                  target_size = (224, 224), 
-                                                  class_mode = "categorical", 
-                                                  color_mode="rgb", 
-                                                  batch_size = 16,
-                                                  interpolation="lanczos",
-                                                  );
-
-
-    valid_gen = test_datagen.flow_from_directory(valid_dir, 
-                                                  target_size = (224, 224), 
-                                                  class_mode = "categorical", 
-                                                  color_mode="rgb", 
-                                                  batch_size = 16,
-                                                  interpolation="lanczos",
-                                                  );
-
-    test_gen = test_datagen.flow_from_directory(test_dir, 
-                                                  target_size = (224, 224), 
-                                                  class_mode = "categorical", 
-                                                  color_mode="rgb", 
-                                                  batch_size = 16,
-                                                  interpolation="lanczos",
-                                                );
-
-    if(not os.path.isfile("/data/dense.h5")):
-        # building model
-        model, init_model = build_model();
-
-        # freezing model
-        model = init_model.freeze(model);
+        # editing last layer to be four class model and creating new model
+        model = Model(inputs = built.input, outputs = Dense(4,
+        activation = "softmax", name="last")(built.layers[-2].output));
+        # base_model = DenseNet121(weights = "imagenet", include_top = False, 
+        #                             input_shape = (224, 224, 3))
+        # x = base_model.output
+        # x = GlobalAveragePooling2D()(x)
+        # predictions = Dense(4, activation = "softmax", name = "last")(x)
+        # model = Model(inputs = base_model.input, outputs = predictions)
+        model.load_weights(os.path.join(args.write, "{}-pre.h5".format(args.model)));
 
         # compiling
         model.compile(loss = "categorical_crossentropy",
-                             optimizer = SGD(lr = 0.0001),
-                             metrics = ["accuracy"]
+                             optimizer = SGD(lr = 0.00002),
+                             metrics = ["accuracy", AUC(name = "auc"), Precision(name = "prec"), Recall(name = "rec")],
                              );
-        # training model
-        history = model.fit_generator(train_gen, epochs = 10, validation_data = valid_gen);
-
-        # saving model
-        model.save("/data/dense.h5");
-
-    # loading model anew
-    base_model = DenseNet121(weights = "imagenet", include_top = False, 
-                                input_shape = (224, 224, 3))
-    x = base_model.output
-    x = GlobalAveragePooling2D()(x)
-    predictions = Dense(4, activation = "softmax", name = "last")(x)
-    model = Model(inputs = base_model.input, outputs = predictions)
-    model.load_weights("/data/dense.h5")
-
-    # compiling
-    model.compile(loss = "categorical_crossentropy",
-                         optimizer = SGD(lr = 0.0001),
-                         metrics = ["accuracy"]
-                         );
     # training
-    history = model.fit_generator(train_gen, epochs = 30, validation_data = valid_gen);
+    history = model.fit(
+            train_gen, 
+            epochs = 50, 
+            validation_data = valid_gen,
+            class_weight = weights_dict
+    );
     
     # testing model
     accuracy = model.evaluate(test_gen);
 
     print(accuracy);
 
+    model.save(os.path.join(args.write, "{}-final.h5".format(args.model)));
+
+    # saving history
+    numpy.save(os.path.join(args.write, "{}_history.npy".format(args.model)), history.history);
+
+
 # print(list_physical_devices("GPU"));
-train_model("/data/covid_xrays");
+# train_model("/data/covid_xrays");
+# makeGraphs("/data/model_history.npy");
 # resize_organize_images("/data/kaggle_data/train_study_level.csv",
 #         "/data/_kaggle_data", "/data/covid_xrays");
+
+if(__name__ == "__main__"):
+    # This is the main function of the training script
+    
+    # initializing parser
+    parser = argparse.ArgumentParser();
+
+    # adding arguments
+    parser.add_argument("-d", "--data", type = str, help = "Where the data lives (in designated file structure)");
+    parser.add_argument("-f", "--function", type = str, help = "Either train_model (for one indidual model) or train_ensemble (for all models)");
+    parser.add_argument("-m", "--model", type = str, help = "Model you wish to individually train (dense, efficient, hyper, inception, inceptionr, resnet, or xception)");
+    parser.add_argument("-w", "--write", type = str, help = "Directory that weights are written to");
+    parser.add_argument("-lw", "--load_weights", type = str, help = "Where weights (for transfer learning) are loaded from");
+
+    # parsing arguments
+    args = parser.parse_args();
+
+    # initializing function dictionary
+    functions = { "train_model": train_model, "train_ensemble": None };
+    
+    # executing script
+    functions[args.function](args);
+
