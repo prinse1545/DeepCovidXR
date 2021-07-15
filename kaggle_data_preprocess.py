@@ -329,6 +329,7 @@ def create_tf_records(args):
         if(writer != None):
             writer.close();
 
+
 if(__name__ == "__main__"):
     # This is the main function of 
     # the preprocessing script.
@@ -355,3 +356,4 @@ if(__name__ == "__main__"):
 
     # exectuting function
     functions[args.function](args);
+

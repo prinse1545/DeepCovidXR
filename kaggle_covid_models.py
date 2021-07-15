@@ -39,7 +39,7 @@ def build_model(model_name):
     weight_dict = {
             "dense": "DenseNet",
             "xception": "Xception",
-            "resnet": "InceptionResNet",
+            "resnet": "ResNet50",
             "efficient": "EfficientNet",
             "hyper": None,
             "inception": "Inception",
@@ -122,6 +122,7 @@ def train_model(args):
             # generating weight
             weights_dict[index] = n_cat_files / len(os.listdir(os.path.join(valid_dir, key)));
             print(key, weights_dict[index], len(os.listdir(os.path.join(valid_dir, key))));
+<<<<<<< HEAD
    
     # deleting write if exists
     if(os.path.isdir(args.write)):
@@ -196,10 +197,8 @@ def train_model(args):
             class_weight = weights_dict
     );
     
-    # testing model
-    accuracy = model.evaluate(test_gen);
-
-    print(accuracy);
+    # executing script
+    functions[args.function](args);
 
     model.save(os.path.join(args.write, "{}-final.h5".format(args.model)));
 
