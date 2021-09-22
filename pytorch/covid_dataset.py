@@ -48,15 +48,6 @@ class ODCovidDataset(torch.utils.data.Dataset):
         else:
             boxes = [];
     
-        # getting dicom to get dimensions
-        xray = pydicom.filereader.dcmread(os.path.join(self.dicom_dir, self.imgs[index].replace("-", "/").replace(".png", ".dcm")));
-
-        # getting height and width
-        width = xray.pixel_array.shape[1];
-        height = xray.pixel_array.shape[0];
-        # print("index", index);
-        # print("shape", xray.pixel_array.shape, "width", width, "height", height);
-        # getting bbs
         final_boxes = [];
         
         # getting radians
@@ -70,10 +61,10 @@ class ODCovidDataset(torch.utils.data.Dataset):
 
         for box in boxes:
             # getting mins
-            mins = numpy.array([(box["x"] / width) - 0.0, (box["y"] / height) - 0.0]);
+            mins = numpy.array([box["x"], box["y"]]);
 
             # getting maxs
-            maxs = numpy.array([((box["x"] + box["width"]) / width) - 0.0, ((box["y"] + box["height"]) / height) - 0.0]);
+            maxs = numpy.array([box["x"] + box["width"], box["y"] + box["height"]]);
 
             # rotating
             r_mins = numpy.matmul(r_mat, mins);

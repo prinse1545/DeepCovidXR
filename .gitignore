@@ -13,3 +13,4 @@ object_detection/workspace/annotations/valid-record.tfrecord
 resnet_weights/inceptionr-final.h5
 resnet_weights/inceptionr-pre.h5
 resnet_weights/inceptionr_history.npy
+pytorch/models

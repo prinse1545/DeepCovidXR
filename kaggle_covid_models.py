@@ -50,7 +50,7 @@ def build_model(model_name):
     init = model_dict[model_name]("/data/covid_weights/{}_224_up_uncrop.h5".format(weight_dict[model_name]));
             
     # building base model
-    built = init.buildBaseModel(224);
+    built = init.buildDropModel(224, 0.15);
     
     # editing last layer to be four class model and creating new model
     kbuilt = Model(inputs = built.input, outputs = Dense(4,
@@ -120,9 +120,9 @@ def train_model(args):
             
             index = valid_gen.class_indices[key]; # getting index
             # generating weight
-            weights_dict[index] = n_cat_files / len(os.listdir(os.path.join(valid_dir, key)));
-            print(key, weights_dict[index], len(os.listdir(os.path.join(valid_dir, key))));
-<<<<<<< HEAD
+            prc = len(os.listdir(os.path.join(valid_dir, key))) / n_cat_files;
+            weights_dict[index] = 222**(-1 * prc + (7.5 / 8)) + 0.5;
+            print(prc, weights_dict[index], key); 
    
     # deleting write if exists
     if(os.path.isdir(args.write)):
@@ -141,7 +141,7 @@ def train_model(args):
 
             # compiling
             model.compile(loss = "categorical_crossentropy",
-                                 optimizer = SGD(lr = 0.00002),
+                                 optimizer = SGD(lr = 0.001),
                                  metrics = ["accuracy", AUC(name = "auc"), Precision(name = "prec"), Recall(name = "rec")],
                                  );
         # training model
@@ -166,12 +166,23 @@ def train_model(args):
                 "inception": InceptionNet,
                 "inceptionr": InceptionResNet
         };
+
+        # building weight dictionary
+        weight_dict = {
+                "dense": "DenseNet",
+                "xception": "Xception",
+                "resnet": "ResNet50",
+                "efficient": "EfficientNet",
+                "hyper": None,
+                "inception": "Inception",
+                "inceptionr": "InceptionResNet"
+        };
         
         # initializing model with access to weights
-        init = model_dict[args.model]("/data/covid_weights/EfficientNet_224_up_uncrop.h5");
+        init = model_dict[args.model]("/data/covid_weights/{}_224_up_uncrop.h5".format(weight_dict[args.model]));
                 
         # building base model
-        built = init.buildBaseModel(224);
+        built = init.buildDropModel(224, 0.3);
         
         # editing last layer to be four class model and creating new model
         model = Model(inputs = built.input, outputs = Dense(4,
@@ -186,7 +197,7 @@ def train_model(args):
 
         # compiling
         model.compile(loss = "categorical_crossentropy",
-                             optimizer = SGD(lr = 0.00002),
+                             optimizer = SGD(lr = 0.001),
                              metrics = ["accuracy", AUC(name = "auc"), Precision(name = "prec"), Recall(name = "rec")],
                              );
     # training
@@ -197,10 +208,11 @@ def train_model(args):
             class_weight = weights_dict
     );
     
-    # executing script
-    functions[args.function](args);
+    # testing model
+    accuracy = model.evaluate(test_gen);
 
     model.save(os.path.join(args.write, "{}-final.h5".format(args.model)));
+    model.save(args.write);
 
     # saving history
     numpy.save(os.path.join(args.write, "{}_history.npy".format(args.model)), history.history);

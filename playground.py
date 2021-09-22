@@ -9,6 +9,7 @@
 from pydicom.pixel_data_handlers.util import apply_voi_lut
 from skimage.transform import resize
 import matplotlib.pyplot as plt
+from PIL import Image
 import shutil
 import pydicom
 import pandas
@@ -17,13 +18,14 @@ import numpy
 import cv2
 import json
 import os
+import math
 
 def draw_bounding_bs():
     # This function takes 100 random images and 
     # draws their bounding boxes
 
     # dicom path
-    dicom_path = "/data/kaggle_data";
+    dicom_path = "/data/kaggle_data/raw_dicom";
 
     # getting filenames
     filenames = [];
@@ -37,9 +39,10 @@ def draw_bounding_bs():
 
     # getting filenames to draw
     draw_filenames = [filenames[indx] for indx in file_indices];
-
+    print(draw_filenames);
+    draw_filenames.append("21acb15b9ee4.dcm");
     # getting training image bounding box data
-    image_bb = pandas.read_csv("/data/kaggle_data/train_image_level.csv");
+    image_bb = pandas.read_csv("/data/kaggle_data/labels/train_image_level.csv");
 
     if(os.path.isdir("/data/bb_imgs")):
         shutil.rmtree("/data/bb_imgs");
@@ -93,16 +96,16 @@ def draw_bounding_bs():
 
                     # iterating over boxes
                     for box in j_boxes:
-                        # getting center
-                        center = (int((box["x"] * 224) / width), int((box["y"] * 224) / height));
+                        # getting corner
+                        corner = (int((box["x"] * 224) / width), int((box["y"] * 224) / height));
                         # getting dimensions
                         dims = (int((box["width"] * 224) / width), int((box["height"] * 224) / height));
 
                         # drawing bb
                         xray = cv2.rectangle(
                                 xray,
-                                (int(center[0]), int(center[1] - (dims[1]))),
-                                (int(center[0] + (dims[0])), int(center[1])),
+                                (int(corner[0] + (dims[0])), int(corner[1] + dims[1])),
+                                (int(corner[0]), int(corner[1])),
                                 color = (1, 0, 0),
                                 thickness = 2
                                 );
@@ -110,4 +113,89 @@ def draw_bounding_bs():
                 # saving image
                 plt.imsave("/data/bb_imgs/{}.png".format(os.path.splitext(_file)[0]), xray, cmap = "gray", format = "png");
 
-draw_bounding_bs();
+
+def draw_jet_bbs():
+
+    # getting rid of write dir if it does exist
+    if(os.path.isdir("/data/od_bbs")):
+        shutil.rmtree("/data/od_bbs");
+
+    # making dir
+    os.makedirs("/data/od_bbs");
+
+    # getting filenames in train
+    filenames = [filename for filename in os.listdir("/data/kaggle_data/od_formatted/train")];
+
+    # getting filename indices
+    file_indices = random.sample(range(0, len(filenames)), 10);
+
+    # opening labels
+    image_bb = pandas.read_csv("/data/kaggle_data/labels/train_image_level.csv");
+
+    # getting radians
+    theta = numpy.pi / 2;
+
+    # creating rotation matrix
+    r_mat = numpy.array([
+        [numpy.cos(theta), -1 * numpy.sin(theta)], 
+        [numpy.sin(theta), numpy.cos(theta)]
+    ]);
+
+    # iterating over indices 
+    for index in file_indices:
+
+        # making path to file
+        path = os.path.join("/data/kaggle_data/od_formatted/train", filenames[index]);
+
+        # opening image
+        img = numpy.asarray(Image.open(path).convert("RGB"));
+        img = numpy.transpose(img).astype(numpy.uint8).copy();
+        img = img[0];
+        # getting kaggle id 
+        kaggle_id = "{}_image".format(filenames[index].split("-")[-1].split(".")[0]);
+        print(kaggle_id)
+        # getting bounding boxes
+        boxes = image_bb[image_bb["id"].str.contains(kaggle_id)].iloc[0].loc["boxes"];
+
+        # reading in dicom
+        xray_dicom = pydicom.filereader.dcmread(os.path.join(
+            "/data/kaggle_data/raw_dicom/train", "{}.dcm".format(filenames[index].split(".")[0].replace("-", "/"))));
+
+        # getting width amd height
+        width = xray_dicom.pixel_array.shape[1];
+        height = xray_dicom.pixel_array.shape[0];
+
+        # filtering out Nans
+        if(boxes == boxes):
+            # getting json version of string
+            j_boxes = json.loads(boxes.replace("'", "\""));
+
+            # iterating over boxes
+            for box in j_boxes:
+                # getting mins
+                mins = numpy.array([(box["x"] / width) - 0.0, (box["y"] / height) - 0.0]);
+
+                # getting maxs
+                maxs = numpy.array([((box["x"] + box["width"]) / width) - 0.0, ((box["y"] + box["height"]) / height) - 0.0]);
+
+                # rotating
+                r_mins = numpy.matmul(r_mat, mins);
+                r_maxs = numpy.matmul(r_mat, maxs);
+
+                # drawing bb
+                img = cv2.rectangle(
+                        img,
+                        (int(r_maxs[0] * -1024), int(r_maxs[1] * 1024)),
+                        (int(r_mins[0] * -1024), int(r_mins[1] * 1024)),
+                        color = (1, 0, 0),
+                        thickness = 2
+                );
+
+
+        # saving img
+        save_img = Image.fromarray(img);
+        save_img.save(os.path.join("/data/od_bbs", filenames[index]));
+        save_img.close();
+
+# draw_bounding_bs();
+draw_jet_bbs();
