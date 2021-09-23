@@ -113,7 +113,7 @@ def create_gradCAMs(args):
         visualizations.append(visualization);
 
     # getting average of grad cams
-    visualization = numpy.mean(visualizations, axis = 0);
+    visualization = visualizations[0] #numpy.mean(visualizations, axis = 0);
 
 
     #  plotting grad cam
