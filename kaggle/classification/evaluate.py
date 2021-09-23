@@ -107,7 +107,7 @@ def create_gradCAMs(args):
                             layer_idx = n_layers - 1,
                             filter_indices = 0,
                             seed_input = img,
-                            penultimate_layer_idx = n_layers - 2);
+                            penultimate_layer_idx = n_layers - 4);
         
         # saving visualizations
         visualizations.append(visualization);
