@@ -84,8 +84,11 @@ def create_gradCAMs(args):
     # initializing visualizations vector
     visualizations = [];
 
+    # penultimate layers
+    penultimate = ["bn", "mixed10", "conv_7b_bn", "conv5_block3_3_bn", "block14_sepconv2_bn"];
+
     # iterating over model names
-    for name in model_names:
+    for index, name in enumerate(model_names):
 
         # initializing model with access to weights
         init = model_dict[name]("/data/covid_weights/{}_224_up_crop.h5".format(weight_dict[name]));
@@ -103,11 +106,12 @@ def create_gradCAMs(args):
         # creating visualization
         n_layers = len(model.layers);
 
+
         visualization = visualize_cam(model,
                             layer_idx = n_layers - 1,
                             filter_indices = 0,
                             seed_input = img,
-                            penultimate_layer_idx = n_layers - 4);
+                            penultimate_layer_idx = utils.find_layer_idx(model, penultimate[index]));
         
         # saving visualizations
         visualizations.append(visualization);
