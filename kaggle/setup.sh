@@ -13,7 +13,7 @@ apt-get install -y libsm6 libxext6 libxrender-dev
 pip3 install -r requirements.txt
 # getting absolute path of parent directory
 COVID_PATH=$( cd .. && pwd )
-
+# /usr/local/lib/python3.6/dist-packages/vis/visualization/saliency.py
 # setting python paths
 echo "export PYTHONPATH="${PYTHONPATH}:${COVID_PATH}"" >> ~/.bashrc
 # reloading bashrc

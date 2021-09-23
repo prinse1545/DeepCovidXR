@@ -8,8 +8,10 @@
 from tensorflow.keras.models import Model, load_model
 from tensorflow.keras.layers import Dense
 from vis.visualization import visualize_cam
+from vis.visualization import overlay
 from vis.utils import utils
 import matplotlib.pyplot as plt
+from matplotlib import cm
 from helper import model_dict, weight_dict
 from PIL import Image
 import argparse
@@ -79,6 +81,9 @@ def create_gradCAMs(args):
     # numpy
     img = numpy.array(img.convert("RGB"));
 
+    # initializing visualizations vector
+    visualizations = [];
+
     # iterating over model names
     for name in model_names:
 
@@ -98,12 +103,40 @@ def create_gradCAMs(args):
         # creating visualization
         n_layers = len(model.layers);
 
-        print(n_layers);
         visualization = visualize_cam(model,
                             layer_idx = n_layers - 1,
                             filter_indices = 0,
                             seed_input = img,
                             penultimate_layer_idx = n_layers - 2);
+        
+        # saving visualizations
+        visualizations.append(visualization);
+
+    # getting average of grad cams
+    visualization = numpy.mean(visualizations, axis = 0);
+
+
+    #  plotting grad cam
+    plt.rcParams["figure.figsize"] = (18, 6);
+
+    # initializing subplots
+    fig, axes = plt.subplots(1, 3);
+    
+    # plotting
+    axes[0].imshow(img[..., 0], cmap = "bone");
+    axes[0].set_title("Input");
+    axes[1].imshow(visualization);
+    axes[1].set_title("Grad-CAM");
+
+    # heatmap over og
+    hm = numpy.uint8(cm.jet(visualization)[..., :3] * 255);
+    og = numpy.uint8(cm.bone(img[..., 0])[..., :3] * 255);
+
+    axes[2].imshow(overlay(hm, og));
+    axes[2].set_title("Overlay");
+
+    # saving figure
+    plt.savefig("/data/DeepCovidXR/grad_cam.png");
 
 def create_distribution_graph(args):
 
