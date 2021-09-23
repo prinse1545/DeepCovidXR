@@ -76,7 +76,7 @@ def create_gradCAMs(args):
     ];
 
     # reading image
-    img = Image.open("/data/kaggle_data/class_formatted/test/atypical_appearance/7df6ff1a1957-2b6cbdaf319f-29a7faf526ba.png");
+    img = Image.open("/data/kaggle_data/class_formatted/test/no_pneumonia/ec7686c519bf-21600dce0640-cfaa674d0add.png");
 
     # numpy
     img = numpy.array(img.convert("RGB"));
@@ -103,6 +103,7 @@ def create_gradCAMs(args):
         # loading weights
         model.load_weights("{}/{}/{}-final.h5".format(args.read_dir, name, name));
 
+        print(model.predict(numpy.array([img])));
         # creating visualization
         n_layers = len(model.layers);
 
