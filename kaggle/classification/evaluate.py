@@ -76,7 +76,7 @@ def create_gradCAMs(args):
     ];
 
     # reading image
-    img = Image.open("/data/kaggle_data/class_formatted/test/no_pneumonia/ec7686c519bf-21600dce0640-cfaa674d0add.png");
+    img = Image.open("/data/kaggle_data/class_formatted/test/atypical_appearance/7fac35c9e1f4-83ca59b7b00a-8c313f2bf15f.png");
 
     # numpy
     img = numpy.array(img.convert("RGB"));
