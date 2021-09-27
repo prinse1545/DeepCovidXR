@@ -92,13 +92,24 @@ def train_model(args):
     # initialzing loss weights
     weights_dict = {};
 
+    # collecting percentages and keys
+    prcs = [];
+    keys = [];
+
     for key in valid_gen.class_indices.keys():
             
-        index = valid_gen.class_indices[key]; # getting index
+        keys.append(valid_gen.class_indices[key]); # getting index
         # generating weight
-        prc = len(os.listdir(os.path.join(valid_dir, key))) / n_cat_files;
-        weights_dict[index] = 222**(-1 * prc + (7.5 / 8)) + 0.5;
-        print(prc, weights_dict[index], key); 
+        prcs.append(len(os.listdir(os.path.join(valid_dir, key))) / n_cat_files);
+    
+    # normalizing
+    prcs = [(prc - min(prcs)) / max(prcs) for prc in prcs];
+
+    # setting weights dictionary
+    for index, prc in zip(keys, prcs):
+        # setting weight
+        weights_dict[index] = 222**(-1 * prc + (7.5 / 8));
+        print(prc, weights_dict[index], index); 
    
     # deleting write if exists
     if(os.path.isdir(args.write)):

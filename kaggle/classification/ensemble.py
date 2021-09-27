@@ -7,35 +7,16 @@ from covid_models import DenseNet, XceptionNet, ResNet, EfficientNet, InceptionN
 from tensorflow.keras.models import Model, load_model
 from tensorflow.keras.layers import Dense
 from sklearn.metrics import multilabel_confusion_matrix
+from helper import model_dict, weight_dict
 import matplotlib.pyplot as plt
 import argparse
 from PIL import Image
 import numpy
+import sys
 import os
 
 def create_ensemble(ensemble_dir):
     
-    # building model dictionary
-    model_dict = {
-            "dense": DenseNet,
-            "xception": XceptionNet,
-            "resnet": ResNet,
-            "efficient": EfficientNet,
-            "inception": InceptionNet,
-            "inceptionr": InceptionResNet
-    };
-
-    # building weight dictionary
-    weight_dict = {
-            "dense": ("DenseNet", 0.6354),
-            "xception": ("Xception", 0.6464),
-            "resnet": ("ResNet50", 0.6314),
-            "efficient": "EfficientNet",
-            "hyper": None,
-            "inception": ("Inception", 0.6117),
-            "inceptionr": ("InceptionResNet", 0.6346)
-    };
-
     # initializing ensemble
     ensemble = [];
 
@@ -174,3 +155,26 @@ def ensemble_evaluation():
 
 if(__name__ == "__main__"):
     # main function of ensemble script
+    parser = argparse.ArgumentParser();
+
+    # adding arguments
+    parse.add_argument("-f", "--function", type = str, help = "The function to be invoked (ensemble_evaluation)");
+    parser.add_argument("-r", "--read_dir", type = str, help = "The dircetory individual model weights are stored");
+    parser.add_argument("-w", "--write_dir", type = str, help = "The directory where graphs are to be written to");
+
+
+    # getting arguments
+    args = parser.parser_args();
+
+    # checking that function exists
+    if(args.function == None):
+        # exiting with error 
+        sys.exit("A function must be specified to use the script, use the -h or --help flag to learn which arguments to use");
+
+    # creating function dic
+    function_dic = {
+        "ensemble_evaluation": ensemble_evaluation
+    };
+
+    # invoking function
+    function_dic[args.function](args);

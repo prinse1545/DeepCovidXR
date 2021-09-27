@@ -16,6 +16,7 @@ from helper import model_dict, weight_dict
 from PIL import Image
 import argparse
 import numpy
+import shutil
 import sys
 import os
 
@@ -66,6 +67,13 @@ def create_graphs(args):
 
 def create_gradCAMs(args):
 
+    # taking care of write dir
+    if(os.path.isdir(args.write_dir)):
+        shutil.rmtree(args.write_dir);
+
+    # creating dir
+    os.makedirs(args.write_dir);
+
     # assuming list of model names in directory to be given
     model_names = [
         "dense",
@@ -99,11 +107,10 @@ def create_gradCAMs(args):
         # editing last layer to be four class model and creating new model
         model = Model(inputs = built.input, outputs = Dense(4,
             activation = "softmax", name="last")(built.layers[-2].output));
-
+        print(model.predict(numpy.asarray([img])));
         # loading weights
         model.load_weights("{}/{}/{}-final.h5".format(args.read_dir, name, name));
 
-        print(model.predict(numpy.array([img])));
         # creating visualization
         n_layers = len(model.layers);
 
@@ -113,35 +120,31 @@ def create_gradCAMs(args):
                             filter_indices = 0,
                             seed_input = img,
                             penultimate_layer_idx = utils.find_layer_idx(model, penultimate[index]));
+
+        #  plotting grad cam
+        plt.rcParams["figure.figsize"] = (18, 6);
+
+        # initializing subplots
+        fig, axes = plt.subplots(1, 3);
         
-        # saving visualizations
-        visualizations.append(visualization);
+        # plotting
+        axes[0].imshow(img[..., 0], cmap = "bone");
+        axes[0].set_title("Input");
+        axes[1].imshow(visualization);
+        axes[1].set_title("Grad-CAM");
 
-    # getting average of grad cams
-    visualization = visualizations[0]#numpy.mean(visualizations, axis = 0);
+        # heatmap over og
+        hm = numpy.uint8(cm.jet(visualization)[..., :3] * 255);
+        og = numpy.uint8(cm.bone(img[..., 0])[..., :3] * 255);
 
+        axes[2].imshow(overlay(hm, og));
+        axes[2].set_title("Overlay");
 
-    #  plotting grad cam
-    plt.rcParams["figure.figsize"] = (18, 6);
+        # saving figure
+        plt.savefig(os.path.join(args.write_dir, "{}_grad_cam.png".format(name)));
 
-    # initializing subplots
-    fig, axes = plt.subplots(1, 3);
-    
-    # plotting
-    axes[0].imshow(img[..., 0], cmap = "bone");
-    axes[0].set_title("Input");
-    axes[1].imshow(visualization);
-    axes[1].set_title("Grad-CAM");
+        
 
-    # heatmap over og
-    hm = numpy.uint8(cm.jet(visualization)[..., :3] * 255);
-    og = numpy.uint8(cm.bone(img[..., 0])[..., :3] * 255);
-
-    axes[2].imshow(overlay(hm, og));
-    axes[2].set_title("Overlay");
-
-    # saving figure
-    plt.savefig("/data/DeepCovidXR/grad_cam.png");
 
 def create_distribution_graph(args):
 
